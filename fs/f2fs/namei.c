@@ -484,7 +484,8 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	unsigned int root_ino = F2FS_ROOT_INO(F2FS_I_SB(dir));
 	struct f2fs_filename fname;
 
-	trace_f2fs_lookup_start(dir, dentry, flags);
+	/* Comment out since this has use-after-free issue */
+	/* trace_f2fs_lookup_start(dir, dentry, flags); */
 
 	if (dentry->d_name.len > F2FS_NAME_LEN) {
 		err = -ENAMETOOLONG;
@@ -510,13 +511,22 @@ static struct dentry *f2fs_lookup(struct inode *dir, struct dentry *dentry,
 	}
 
 	ino = le32_to_cpu(de->ino);
-	f2fs_put_page(page, 0);
 
 	inode = f2fs_iget(dir->i_sb, ino);
 	if (IS_ERR(inode)) {
+		if (PTR_ERR(inode) != -ENOMEM) {
+			struct f2fs_sb_info *sbi = F2FS_I_SB(dir);
+			printk_ratelimited(KERN_ERR "F2FS-fs: Invalid inode referenced: %u, "
+					"at parent inode: %lu, err: %ld\n", ino, dir->i_ino, PTR_ERR(inode));
+			print_block_data(sbi->sb, page->index,
+					page_address(page), 0, F2FS_BLKSIZE);
+			f2fs_bug_on(sbi, 1);
+		}
+		f2fs_put_page(page, 0);
 		err = PTR_ERR(inode);
 		goto out;
 	}
+	f2fs_put_page(page, 0);
 
 	if ((dir->i_ino == root_ino) && f2fs_has_inline_dots(dir)) {
 		err = __recover_dot_dentries(dir, root_ino);
@@ -545,18 +555,21 @@ out_splice:
 		 * well.  For now, prevent the negative dentry
 		 * from being cached.
 		 */
-		trace_f2fs_lookup_end(dir, dentry, ino, err);
+		/* Comment out since this has use-after-free issue */
+		/* trace_f2fs_lookup_end(dir, dentry, ino, err); */
 		return NULL;
 	}
 #endif
 	new = d_splice_alias(inode, dentry);
 	err = PTR_ERR_OR_ZERO(new);
-	trace_f2fs_lookup_end(dir, dentry, ino, !new ? -ENOENT : err);
+	/* Comment out since this has use-after-free issue */
+	/* trace_f2fs_lookup_end(dir, dentry, ino, !new ? -ENOENT : err); */
 	return new;
 out_iput:
 	iput(inode);
 out:
-	trace_f2fs_lookup_end(dir, dentry, ino, err);
+	/* Comment out since this has use-after-free issue */
+	/* trace_f2fs_lookup_end(dir, dentry, ino, err); */
 	return ERR_PTR(err);
 }
 
@@ -568,7 +581,8 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	struct page *page;
 	int err;
 
-	trace_f2fs_unlink_enter(dir, dentry);
+	/* Comment out since this has use-after-free issue */
+	/* trace_f2fs_unlink_enter(dir, dentry); */
 
 	if (unlikely(f2fs_cp_error(sbi)))
 		return -EIO;
@@ -597,6 +611,7 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 		goto fail;
 	}
 	f2fs_delete_entry(de, page, dir, inode);
+	f2fs_unlock_op(sbi);
 #ifdef CONFIG_UNICODE
 	/* VFS negative dentries are incompatible with Encoding and
 	 * Case-insensitiveness. Eventually we'll want avoid
@@ -607,12 +622,12 @@ static int f2fs_unlink(struct inode *dir, struct dentry *dentry)
 	if (IS_CASEFOLDED(dir))
 		d_invalidate(dentry);
 #endif
-	f2fs_unlock_op(sbi);
 
 	if (IS_DIRSYNC(dir))
 		f2fs_sync_fs(sbi->sb, 1);
 fail:
-	trace_f2fs_unlink_exit(inode, err);
+	/* Comment out since this has use-after-free issue */
+	/* trace_f2fs_unlink_exit(inode, err); */
 	return err;
 }
 

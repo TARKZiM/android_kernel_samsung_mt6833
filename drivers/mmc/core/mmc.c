@@ -130,6 +130,17 @@ static void mmc_set_erase_size(struct mmc_card *card)
 	mmc_init_erase(card);
 }
 
+
+static void mmc_set_wp_grp_size(struct mmc_card *card)
+{
+	if (card->ext_csd.erase_group_def & 1)
+		card->wp_grp_size = card->ext_csd.hc_erase_size *
+			card->ext_csd.raw_hc_erase_gap_size;
+	else
+		card->wp_grp_size = card->csd.erase_size *
+			(card->csd.wp_grp_size + 1);
+}
+
 /*
  * Given a 128-bit response, decode to our card CSD structure.
  */
@@ -180,6 +191,7 @@ static int mmc_decode_csd(struct mmc_card *card)
 		b = UNSTUFF_BITS(resp, 37, 5);
 		csd->erase_size = (a + 1) * (b + 1);
 		csd->erase_size <<= csd->write_blkbits - 9;
+		csd->wp_grp_size = UNSTUFF_BITS(resp, 32, 5);
 	}
 
 	return 0;
@@ -705,6 +717,15 @@ static int mmc_compare_ext_csds(struct mmc_card *card, unsigned bus_width)
 	u8 *bw_ext_csd;
 	int err;
 
+#if defined(CONFIG_MTK_EMMC_CQ_SUPPORT)
+	/* add for emmc reset when error happen */
+	/* return directly because compare fail seldom happens when reinit
+	 * emmc
+	 */
+	if (emmc_resetting_when_cmdq)
+		return 0;
+#endif
+
 	if (bus_width == MMC_BUS_WIDTH_1)
 		return 0;
 
@@ -780,6 +801,7 @@ MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
 MMC_DEV_ATTR(date, "%02d/%04d\n", card->cid.month, card->cid.year);
 MMC_DEV_ATTR(erase_size, "%u\n", card->erase_size << 9);
 MMC_DEV_ATTR(preferred_erase_size, "%u\n", card->pref_erase << 9);
+MMC_DEV_ATTR(wp_grp_size, "%u\n", card->wp_grp_size << 9);
 MMC_DEV_ATTR(ffu_capable, "%d\n", card->ext_csd.ffu_capable);
 MMC_DEV_ATTR(hwrev, "0x%x\n", card->cid.hwrev);
 MMC_DEV_ATTR(manfid, "0x%06x\n", card->cid.manfid);
@@ -791,6 +813,12 @@ MMC_DEV_ATTR(pre_eol_info, "0x%02x\n", card->ext_csd.pre_eol_info);
 MMC_DEV_ATTR(life_time, "0x%02x 0x%02x\n",
 	card->ext_csd.device_life_time_est_typ_a,
 	card->ext_csd.device_life_time_est_typ_b);
+
+//+++bug782977, linaiyu.wt, add, 2022.07.29, add emmc life time
+MMC_DEV_ATTR(life_time_est_typ_a, "0x%x\n",card->ext_csd.device_life_time_est_typ_a);
+MMC_DEV_ATTR(life_time_est_typ_b, "0x%x\n",card->ext_csd.device_life_time_est_typ_b);
+//---bug782977, linaiyu.wt, add, 2022.07.29, add emmc life time
+
 MMC_DEV_ATTR(serial, "0x%08x\n", card->cid.serial);
 MMC_DEV_ATTR(enhanced_area_offset, "%llu\n",
 		card->ext_csd.enhanced_area_offset);
@@ -832,6 +860,173 @@ static ssize_t mmc_dsr_show(struct device *dev,
 }
 
 static DEVICE_ATTR(dsr, S_IRUGO, mmc_dsr_show, NULL);
+//+++bug782977, linaiyu.wt, add, 2022.07.29, add emmc flash_name & vendor name
+static int calc_mem_size(void)
+ {
+     int temp_size;
+     temp_size = (int)totalram_pages/1024; //page size 4K
+
+     if ((temp_size > 0*256) && (temp_size <= 1*256))
+         return 1;
+     else if ((temp_size > 1*256) && (temp_size <= 2*256))
+         return 2;
+     else if ((temp_size > 2*256) && (temp_size <= 3*256))
+         return 3;
+     else if ((temp_size > 3*256) && (temp_size <= 4*256))
+         return 4;
+     else if ((temp_size > 4*256) && (temp_size <= 6*256))
+         return 6;
+     else if ((temp_size > 6*256) && (temp_size <= 8*256))
+         return 8;
+     else
+         return 0;
+ }
+
+static int calc_mmc_size(struct mmc_card *card)
+{
+    int temp_size;
+    temp_size = (int)card->ext_csd.sectors/2/1024/1024; //sector size 512B
+
+    if ((temp_size > 8) && (temp_size <= 16))
+        return 16;
+    else if ((temp_size > 16) && (temp_size <= 32))
+        return 32;
+    else if ((temp_size > 32) && (temp_size <= 64))
+        return 64;
+    else if ((temp_size > 64) && (temp_size <= 128))
+        return 128;
+    else if ((temp_size > 128) && (temp_size <= 256))
+        return 256;
+    else
+        return 0;
+}
+
+static ssize_t flash_name_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct mmc_card *card = mmc_dev_to_card(dev);
+    char *vendor_name = NULL;
+    char *emcp_name = NULL;
+
+    switch (card->cid.manfid) {
+        case 0x11:
+            vendor_name = "Toshiba";
+            break;
+        case 0x13:
+            vendor_name = "Micron";
+	    if (strncmp(card->cid.prod_name, "G2C213", strlen("G2C213")) == 0)
+		    emcp_name = "MT29VZZZAD9GUFSM_046_W213";
+	    else if (strncmp(card->cid.prod_name, "G2C219", strlen("G2C219")) == 0)
+		    emcp_name = "MT29VZZZAD8GUFSL_046_W219";
+	    break;
+        case 0x15:
+            vendor_name = "Samsung";
+            if (strncmp(card->cid.prod_name, "DH6DAB", strlen("DH6DAB")) == 0)
+                emcp_name = "KMDH6001DA_B422";
+            else if (strncmp(card->cid.prod_name, "DX68MB", strlen("DX68MB")) == 0)
+                emcp_name = "KMDX60018M_B425";
+            else if (strncmp(card->cid.prod_name, "QD63MB", strlen("QD63MB")) == 0)
+		emcp_name = "KMQD60013M-B318";
+            else if (strncmp(card->cid.prod_name, "GD6BMB", strlen("GD6BMB")) == 0)
+                emcp_name = "KMGD6001BM-B421";
+            else if (strncmp(card->cid.prod_name, "QX63MB", strlen("QX63MB")) == 0)
+                emcp_name = "KMQX60013M_B419";
+            else if (strncmp(card->cid.prod_name, "QX63AB", strlen("QX63AB")) == 0)
+                emcp_name = "KMQX60013A_B419";
+            else if (strncmp(card->cid.prod_name, "GX6BAB", strlen("GX6BAB")) == 0)
+                emcp_name = "KMGX6001BA_B514";
+            else if (strncmp(card->cid.prod_name, "GX6BMB", strlen("GX6BMB")) == 0)
+                emcp_name = "KMGX6001BM_B514";
+//+bug 720069, houdujing.wt, add, 2022.2.12, add emmc flash life_time, start
+	    else if (strncmp(card->cid.prod_name, "4X62MB", strlen("4X62MB")) == 0)
+                emcp_name = "KM4X60002M_B321";
+            else if (strncmp(card->cid.prod_name, "DP6DAB", strlen("DP6DAB")) == 0 )
+		emcp_name = "KMDP6001DA_B425";
+	    else if (strncmp(card->cid.prod_name, "DC6DMB", strlen("DC6DMB")) == 0)
+		emcp_name = "KMDC6001DM_B625";
+            else if (strncmp(card->cid.prod_name, "DP6DBB", strlen("DP6DBB")) == 0)
+                emcp_name = "KMDP6001DB_B425";
+            else if (strncmp(card->cid.prod_name, "DV6DAB", strlen("DV6DAB")) == 0)
+                emcp_name = "KMDV6001DA_B620";
+            else if (strncmp(card->cid.prod_name, "DV6DBB", strlen("DV6DBB")) == 0)
+		emcp_name = "KMDV6001DB_B625";
+//+bug 720069, houdujing.wt, add, 2022.2.12, add emmc flash life_time, end
+            else
+                emcp_name = NULL;
+            break;
+        case 0x45:
+            vendor_name = "Sandisk";
+            break;
+        case 0x70:
+            vendor_name = "Kingston";
+            if (strncmp(card->cid.prod_name, "FMBCEA", strlen("FMBCEA")) == 0)
+                emcp_name = "32EMCP16-EL3DTA28";
+            else
+                emcp_name = NULL;
+            break;
+        case 0x90:
+            vendor_name = "Hynix";
+            if (strncmp(card->cid.prod_name, "hB8aP>", strlen("hB8aP>")) == 0)
+                emcp_name = "HT9TQ27ABJTMCUR_KUM";
+            else
+                emcp_name = NULL;
+            break;
+        case 0x8F:
+            vendor_name = "UNIC";
+            break;
+        case 0xF4:
+            vendor_name = "BIWIN";
+            break;
+        default:
+            vendor_name = "Unknown";
+            break;
+}
+
+    if (emcp_name == NULL)
+        emcp_name = card->cid.prod_name;
+    return sprintf(buf, "%s_%s_%dGB_%dGB\n",vendor_name, emcp_name, calc_mem_size(), calc_mmc_size(card));
+}
+
+static DEVICE_ATTR(flash_name, S_IRUGO, flash_name_show, NULL);
+
+static ssize_t vendor_name_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+    struct mmc_card *card = mmc_dev_to_card(dev);
+    char *vendor_name = NULL;
+
+    switch (card->cid.manfid) {
+        case 0x11:
+            vendor_name = "Toshiba";
+            break;
+        case 0x13:
+            vendor_name = "Micron";
+            break;
+        case 0x15:
+            vendor_name = "Samsung";
+            break;
+        case 0x45:
+            vendor_name = "Sandisk";
+            break;
+        case 0x70:
+            vendor_name = "Kingston";
+            break;
+        case 0x90:
+            vendor_name = "Hynix";
+            break;
+        case 0x8F:
+            vendor_name = "UNIC";
+            break;
+        case 0xF4:
+            vendor_name = "BIWIN";
+            break;
+        default:
+            vendor_name = "Unknown";
+            break;
+    }
+
+    return sprintf(buf, "%s\n",vendor_name);
+}
+static DEVICE_ATTR(vendor, S_IRUGO, vendor_name_show, NULL);
+//---bug782977, linaiyu.wt, add, 2022.07.29, add emmc flash_name & vendor name
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
@@ -839,6 +1034,7 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_date.attr,
 	&dev_attr_erase_size.attr,
 	&dev_attr_preferred_erase_size.attr,
+	&dev_attr_wp_grp_size.attr,
 	&dev_attr_fwrev.attr,
 	&dev_attr_ffu_capable.attr,
 	&dev_attr_hwrev.attr,
@@ -858,6 +1054,10 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_rca.attr,
 	&dev_attr_dsr.attr,
 	&dev_attr_cmdq_en.attr,
+	&dev_attr_flash_name.attr,
+	&dev_attr_vendor.attr,
+	&dev_attr_life_time_est_typ_a.attr,
+	&dev_attr_life_time_est_typ_b.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(mmc_std);
@@ -1215,6 +1415,14 @@ static int mmc_select_hs400(struct mmc_card *card)
 	mmc_set_timing(host, MMC_TIMING_MMC_HS400);
 	mmc_set_bus_speed(card);
 
+	if (host->ops->execute_hs400_tuning) {
+		mmc_retune_disable(host);
+		err = host->ops->execute_hs400_tuning(host, card);
+		mmc_retune_enable(host);
+		if (err)
+			goto out_err;
+	}
+
 	if (host->ops->hs400_complete)
 		host->ops->hs400_complete(host);
 
@@ -1242,6 +1450,7 @@ int mmc_hs400_to_hs200(struct mmc_card *card)
 	int err;
 	u8 val;
 
+	dev_info(host->parent,"%s\n", __func__);
 	/* Reduce frequency to HS */
 	max_dtr = card->ext_csd.hs_max_dtr;
 	mmc_set_clock(host, max_dtr);
@@ -1714,7 +1923,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			mmc_set_erase_size(card);
 		}
 	}
-
+	mmc_set_wp_grp_size(card);
 	/*
 	 * Ensure eMMC user default partition is enabled
 	 */
@@ -1841,12 +2050,6 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			err = 0;
 		}
 	}
-	/*
-	 * In some cases (e.g. RPMB or mmc_test), the Command Queue must be
-	 * disabled for a time, so a flag is needed to indicate to re-enable the
-	 * Command Queue.
-	 */
-	card->reenable_cmdq = card->ext_csd.cmdq_en;
 
 	if (card->ext_csd.cmdq_en && !host->cqe_enabled) {
 		err = host->cqe_ops->cqe_enable(host, card);
@@ -1859,6 +2062,31 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 				mmc_hostname(host));
 		}
 	}
+
+#ifdef CONFIG_MTK_EMMC_CQ_SUPPORT
+	if (card->ext_csd.cmdq_support && host->caps2 & MMC_CAP2_SWCQ) {
+		err = mmc_cmdq_enable(card);
+		if (err && err != -EBADMSG)
+			goto free_card;
+		if (err) {
+			pr_info("%s: Enabling SWCMDQ failed\n",
+				mmc_hostname(card->host));
+			card->ext_csd.cmdq_support = false;
+			card->ext_csd.cmdq_depth = 0;
+			err = 0;
+		} else {
+			host->swcq_enabled = true;
+			mmc_card_set_cmdq(card);
+		}
+	}
+#endif
+
+	/*
+	 * In some cases (e.g. RPMB or mmc_test), the Command Queue must be
+	 * disabled for a time, so a flag is needed to indicate to re-enable the
+	 * Command Queue.
+	 */
+	card->reenable_cmdq = card->ext_csd.cmdq_en;
 
 	if (host->caps2 & MMC_CAP2_AVOID_3_3V &&
 	    host->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_330) {

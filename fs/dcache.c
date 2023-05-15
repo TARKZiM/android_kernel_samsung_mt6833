@@ -1434,7 +1434,7 @@ static enum d_walk_ret select_collect(void *_data, struct dentry *dentry)
 		goto out;
 
 	if (dentry->d_flags & DCACHE_SHRINK_LIST) {
-		data->found++;
+		goto out;
 	} else {
 		if (dentry->d_flags & DCACHE_LRU_LIST)
 			d_lru_del(dentry);
@@ -3102,8 +3102,10 @@ void __init vfs_caches_init_early(void)
 	for (i = 0; i < ARRAY_SIZE(in_lookup_hashtable); i++)
 		INIT_HLIST_BL_HEAD(&in_lookup_hashtable[i]);
 
+	set_memsize_kernel_type(MEMSIZE_KERNEL_VFSHASH);
 	dcache_init_early();
 	inode_init_early();
+	set_memsize_kernel_type(MEMSIZE_KERNEL_OTHERS);
 }
 
 void __init vfs_caches_init(void)

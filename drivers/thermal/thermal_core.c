@@ -91,6 +91,73 @@ static void bind_previous_governor(struct thermal_zone_device *tz,
 	}
 }
 
+ /* [+Chk 127645,songyuanqiao@wingtech.com,add the thermal ntc 20220704] */
+ /* Instruction
+  * @fled_notify_add() - send "add" to fmk, and called in driver
+  * @fled_return_value: global variable, is assigned in the driver
+  * @temp_state_show() - read the node of "sys/class/thermal/thermal_message/temp_state" info (0 or 1)
+  * @uevent path: /devices/virtual/thermal/thermal_message
+  */
+  #ifdef CONFIG_WT_FLASH_THERMAL_FEATURE
+  int fled_return_value = 0;
+  static struct device *device_scfg;
+  static char *fled_warn_add[2]={"FLED_WARN_STATE=add", NULL};
+  static char *fled_warn_remove[2]={"FLED_WARN_STATE=remove", NULL};
+  
+  void fled_notify_add(void)
+  {
+		kobject_uevent_env(&device_scfg->kobj, KOBJ_CHANGE, fled_warn_add);
+		pr_info("[EveD][T] Fled add uevent called success! ");
+  }
+  
+  void fled_notify_remove(void)
+  {
+		kobject_uevent_env(&device_scfg->kobj, KOBJ_CHANGE, fled_warn_remove);
+        pr_info("[EveD][T] Fled rm uevent called success! ");
+  }
+  
+  static ssize_t
+   temp_state_show(struct device *dev, struct device_attribute *attr, char *buf)
+  {
+		pr_info("[EveD][T]temp_state flag value = %d\n", fled_return_value);
+		return sprintf(buf, "%d\n", fled_return_value);
+  }
+  
+  static DEVICE_ATTR(temp_state, 0664, temp_state_show, NULL);
+
+  /* +bug733919, yexiaojun.wt, MODIFY, 20220527,modify the flashlight NTC temp warning threshhold */ 
+  int threshold_val=80000; 
+  /* -bug733919, yexiaojun.wt, MODIFY, 20220527,modify the flashlight NTC temp warning threshhold */
+ 
+ static ssize_t
+   fled_temp_warning_show(struct device *dev, struct device_attribute *attr, char *buf)
+  {
+  	int val; 
+    val = threshold_val;
+  	return sprintf(buf, "%d\n", val);
+  }
+  
+  static ssize_t
+   fled_temp_warning_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+  {
+	int result;
+	if (kstrtoint(buf, 10, &result))
+		return -EINVAL;
+  
+	if (result < 30000) {		
+  		threshold_val = 52000; 		
+  		pr_info("[EveD][T]Fled temp threshold value cannot less than 30 degree!\n");
+  	} else
+  		threshold_val=result;
+  
+  	pr_info("[EveD][T]You want to set fled temp threshold value to %d, and threshold has to be %d!\n", result, threshold_val);
+  
+  	return count;
+  }
+  
+  static DEVICE_ATTR(fled_temp_warning, 0664, fled_temp_warning_show, fled_temp_warning_store);
+  #endif
+  /* [-Chk 127645,songyuanqiao@wingtech.com,add the thermal ntc 20220704]*/
 /**
  * thermal_set_governor() - Switch to another governor
  * @tz:		a valid pointer to a struct thermal_zone_device
@@ -247,6 +314,10 @@ static int __init thermal_register_governors(void)
 {
 	int result;
 
+	result = thermal_gov_backward_compatible_register();
+	if (result)
+		return result;
+
 	result = thermal_gov_step_wise_register();
 	if (result)
 		return result;
@@ -268,6 +339,7 @@ static int __init thermal_register_governors(void)
 
 static void thermal_unregister_governors(void)
 {
+	thermal_gov_backward_compatible_unregister();
 	thermal_gov_step_wise_unregister();
 	thermal_gov_fair_share_unregister();
 	thermal_gov_bang_bang_unregister();
@@ -1302,6 +1374,7 @@ thermal_zone_device_register(const char *type, int trips, int mask,
 		if (result)
 			goto unregister;
 	}
+	INIT_DELAYED_WORK(&tz->poll_queue, thermal_zone_device_check);
 
 	mutex_lock(&thermal_list_lock);
 	list_add_tail(&tz->node, &thermal_tz_list);
@@ -1310,7 +1383,6 @@ thermal_zone_device_register(const char *type, int trips, int mask,
 	/* Bind cooling devices for this zone */
 	bind_tz(tz);
 
-	INIT_DELAYED_WORK(&tz->poll_queue, thermal_zone_device_check);
 
 	thermal_zone_device_reset(tz);
 	/* Update the new thermal zone and mark it as already updated. */
@@ -1359,6 +1431,8 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 		mutex_unlock(&thermal_list_lock);
 		return;
 	}
+	/* force stop pending/running delayed work */
+	cancel_delayed_work_sync(&(tz->poll_queue));
 	list_del(&tz->node);
 
 	/* Unbind all cdevs associated with 'this' thermal zone */
@@ -1573,6 +1647,7 @@ static int thermal_pm_notify(struct notifier_block *nb,
 	case PM_POST_HIBERNATION:
 	case PM_POST_RESTORE:
 	case PM_POST_SUSPEND:
+		mutex_lock(&thermal_list_lock);
 		atomic_set(&in_suspend, 0);
 		list_for_each_entry(tz, &thermal_tz_list, node) {
 			if (tz->ops && tz->ops->is_wakeable &&
@@ -1582,6 +1657,7 @@ static int thermal_pm_notify(struct notifier_block *nb,
 			thermal_zone_device_update(tz,
 						   THERMAL_EVENT_UNSPECIFIED);
 		}
+		mutex_unlock(&thermal_list_lock);
 		break;
 	default:
 		break;
@@ -1597,6 +1673,11 @@ static int __init thermal_init(void)
 {
 	int result;
 
+	//[+Chk 127645,songyuanqiao@wingtech.com,add the thermal ntc 20220704]
+	#ifdef CONFIG_WT_FLASH_THERMAL_FEATURE
+	device_scfg = kzalloc(sizeof(struct device), GFP_KERNEL);
+	#endif
+    //[-Chk 127645,songyuanqiao@wingtech.com,add the thermal ntc 20220704]
 	mutex_init(&poweroff_lock);
 	result = thermal_register_governors();
 	if (result)
@@ -1606,6 +1687,25 @@ static int __init thermal_init(void)
 	if (result)
 		goto unregister_governors;
 
+	/*[+Chk 127645,songyuanqiao@wingtech.com,add the thermal ntc 20220704] */
+	#ifdef CONFIG_WT_FLASH_THERMAL_FEATURE
+  	dev_set_name(device_scfg, "thermal_message");
+  	device_scfg->class = &thermal_class;
+  
+  	result = device_register(device_scfg);
+  	if (result)
+  		goto unregister_class;
+  
+  	result = device_create_file(device_scfg, &dev_attr_temp_state);
+  	if (result)
+  		goto unregister_class;
+   
+	result = device_create_file(device_scfg, &dev_attr_fled_temp_warning);
+    if (result)
+         goto unregister_class;	
+	#endif
+	/* [-Chk 127645,songyuanqiao@wingtech.com,add the thermal ntc 20220704] */
+		
 	result = genetlink_init();
 	if (result)
 		goto unregister_class;

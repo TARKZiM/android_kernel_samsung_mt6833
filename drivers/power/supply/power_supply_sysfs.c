@@ -46,7 +46,7 @@ static const char * const power_supply_type_text[] = {
 	"USB_PD", "USB_PD_DRP", "BrickID",
 	"USB_HVDCP", "USB_HVDCP_3", "USB_HVDCP_3P5", "Wireless", "USB_FLOAT",
 	"BMS", "Parallel", "Main", "USB_C_UFP", "USB_C_DFP",
-	"Charge_Pump",
+	"Charge_Pump","OTG"
 };
 
 static const char * const power_supply_usb_type_text[] = {
@@ -58,9 +58,15 @@ static const char * const power_supply_status_text[] = {
 	"Unknown", "Charging", "Discharging", "Not charging", "Full"
 };
 
+#if defined (CONFIG_N23_CHARGER_PRIVATE)
+static const char * const power_supply_charge_type_text[] = {
+	"Unknown", "N/A", "Trickle", "Fast", "Slow"
+};
+#else
 static const char * const power_supply_charge_type_text[] = {
 	"Unknown", "N/A", "Trickle", "Fast", "Taper"
 };
+#endif
 
 static const char * const power_supply_health_text[] = {
 	"Unknown", "Good", "Overheat", "Dead", "Over voltage",
@@ -102,6 +108,10 @@ static const char * const power_supply_usbc_pr_text[] = {
 
 static const char * const power_supply_typec_src_rp_text[] = {
 	"Rp-Default", "Rp-1.5A", "Rp-3A"
+};
+
+static const char * const power_supply_otg_text[] = {
+	"OFF", "ON"
 };
 
 static ssize_t power_supply_show_usb_type(struct device *dev,
@@ -163,7 +173,65 @@ static ssize_t power_supply_show_property(struct device *dev,
 			return ret;
 		}
 	}
+#if defined (CONFIG_N26_CHARGER_PRIVATE)
+	if(!strcmp(psy->desc->name,"otg")){
+		ret = power_supply_get_property(psy, psp, &value);
+		if (ret < 0) {
+			if (ret == -ENODATA)
+				dev_dbg(dev, "driver has no data for `%s' property\n",
+					attr->attr.name);
+			else if (ret != -ENODEV && ret != -EAGAIN)
+				dev_err_ratelimited(dev,
+					"driver failed to report `%s' property: %zd\n",
+					attr->attr.name, ret);
+			return ret;
+		}
+		switch (psp) {
+			case POWER_SUPPLY_PROP_TYPE:
+				ret = sprintf(buf, "%s\n",value.intval?"OTG":"No OTG");
+				break;
+			case POWER_SUPPLY_PROP_ONLINE:
+				ret = sprintf(buf, "%s\n",value.intval?"ON":"OFF");
+				break;
+			default:
+				ret = 0;		
+		}
+		return ret;
+		
+	}
+#else
+	if(!strcmp(psy->desc->name,"otg")){
+		ret = power_supply_get_property(psy, psp, &value);
+		if (ret < 0) {
+			if (ret == -ENODATA)
+				dev_dbg(dev, "driver has no data for `%s' property\n",
+					attr->attr.name);
+			else if (ret != -ENODEV && ret != -EAGAIN)
+				dev_err_ratelimited(dev,
+					"driver failed to report `%s' property: %zd\n",
+					attr->attr.name, ret);
+			return ret;
+		}
+		switch (psp) {
+//+Bug789327,yangchaojun.wt,ADD,OTG status			
+#if defined(CONFIG_N23_CHARGER_PRIVATE) || defined(CONFIG_W2_CHARGER_PRIVATE)
+			case POWER_SUPPLY_PROP_TYPE:
+				ret = sprintf(buf, "%s\n",value.intval?"otg":"no otg");
+				break;
+#endif	
+//-Bug789327,yangchaojun.wt,ADD,OTG status
+			case POWER_SUPPLY_PROP_ONLINE:
+				ret = sprintf(buf, "%s\n",
+						power_supply_otg_text[value.intval]);
+				pr_err("[%s]val = %d\n",__func__,value.intval);
+				break;
+			default:
+				ret = 0;
+		}
+		return ret;
 
+	}
+#endif
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		ret = sprintf(buf, "%s\n",
@@ -185,11 +253,18 @@ static ssize_t power_supply_show_property(struct device *dev,
 		ret = sprintf(buf, "%s\n",
 			      power_supply_capacity_level_text[value.intval]);
 		break;
-	case POWER_SUPPLY_PROP_TYPE:
+#if defined (CONFIG_W2_CHARGER_PRIVATE)
 	case POWER_SUPPLY_PROP_REAL_TYPE:
+#endif
+	case POWER_SUPPLY_PROP_TYPE:
 		ret = sprintf(buf, "%s\n",
 			      power_supply_type_text[value.intval]);
 		break;
+#if defined (CONFIG_N23_CHARGER_PRIVATE)
+	case POWER_SUPPLY_PROP_REAL_TYPE:
+		ret = sprintf(buf, "%s\n", value.strval);
+		break;
+#endif
 	case POWER_SUPPLY_PROP_USB_TYPE:
 		ret = power_supply_show_usb_type(dev, psy->desc->usb_types,
 						 psy->desc->num_usb_types,
@@ -223,6 +298,11 @@ static ssize_t power_supply_show_property(struct device *dev,
 	case POWER_SUPPLY_PROP_MODEL_NAME ... POWER_SUPPLY_PROP_SERIAL_NUMBER:
 		ret = sprintf(buf, "%s\n", value.strval);
 		break;
+#if defined (CONFIG_N21_CHARGER_PRIVATE) || defined (CONFIG_N23_CHARGER_PRIVATE) || defined (CONFIG_W2_CHARGER_PRIVATE)
+	case POWER_SUPPLY_PROP_NEW_CHARGE_TYPE:
+		ret = sprintf(buf, "%s\n", value.strval);
+		break;
+#endif
 	default:
 		ret = sprintf(buf, "%d\n", value.intval);
 	}
@@ -237,7 +317,10 @@ static ssize_t power_supply_store_property(struct device *dev,
 	struct power_supply *psy = dev_get_drvdata(dev);
 	enum power_supply_property psp = attr - power_supply_attrs;
 	union power_supply_propval value;
-
+//+Bug 789244,yangchaojun.wt,modify,Resolve STORE MODE echo setting invalid
+#if !defined (CONFIG_N23_CHARGER_PRIVATE)	
+	int x = 0;
+#endif
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		ret = sysfs_match_string(power_supply_status_text, buf);
@@ -267,12 +350,31 @@ static ssize_t power_supply_store_property(struct device *dev,
 	 */
 	if (ret < 0) {
 		long long_val;
-
+//+Bug 789244,yangchaojun.wt,modify,Resolve STORE MODE echo setting invalid
+#if defined (CONFIG_N23_CHARGER_PRIVATE) || defined (CONFIG_N26_CHARGER_PRIVATE)
 		ret = kstrtol(buf, 10, &long_val);
 		if (ret < 0)
 			return ret;
 
+		ret = long_val;	
+#else
+//zhaosidong.wt,MODIFY, battery capacity control in demo mode
+#if defined (CONFIG_W2_CHARGER_PRIVATE) || defined (CONFIG_N21_CHARGER_PRIVATE)
+		if (psp == POWER_SUPPLY_PROP_STORE_MODE) {
+			if (sscanf(buf, "%10d\n", &x) == 1) {
+				pr_err("#### power_supply_store_property x(%d)\n", x );
+				value.intval = x;
+			}
+		} else {
+			ret = kstrtol(buf, 10, &long_val);
+			if (ret < 0)
+				return ret;
+
 		ret = long_val;
+		}
+#endif
+#endif		
+		
 	}
 
 	value.intval = ret;
@@ -351,12 +453,45 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(precharge_current),
 	POWER_SUPPLY_ATTR(charge_term_current),
 	POWER_SUPPLY_ATTR(calibrate),
+#if defined (CONFIG_N23_CHARGER_PRIVATE)
+	POWER_SUPPLY_ATTR(voltage),
+	POWER_SUPPLY_ATTR(typec_cc_orientation),
+	POWER_SUPPLY_ATTR(real_type),
+	POWER_SUPPLY_ATTR(batt_misc_event),
+	POWER_SUPPLY_ATTR(batt_current_ua_now),
+	POWER_SUPPLY_ATTR(new_charge_type),
+	POWER_SUPPLY_ATTR(hv_charger_status),
+	POWER_SUPPLY_ATTR(store_mode),
+	POWER_SUPPLY_ATTR(batt_slate_mode),
+	POWER_SUPPLY_ATTR(batt_current_event),
+	POWER_SUPPLY_ATTR(battery_cycle),
+//+bug 790826,yangchaojun,wt,add batt_full_capacity node	
+	POWER_SUPPLY_ATTR(batt_full_capacity),	
+#endif
+#ifdef  CONFIG_W2_CHARGER_PRIVATE
+	POWER_SUPPLY_ATTR(typec_cc_orientation),
+	POWER_SUPPLY_ATTR(afc_flag),
+	POWER_SUPPLY_ATTR(batt_misc_event),
+	POWER_SUPPLY_ATTR(batt_current_ua_now),
+	POWER_SUPPLY_ATTR(batt_slate_mode),
+	POWER_SUPPLY_ATTR(batt_current_event),
+	POWER_SUPPLY_ATTR(hv_charger_status),
+	POWER_SUPPLY_ATTR(store_mode),
+	POWER_SUPPLY_ATTR(new_charge_type),
+	POWER_SUPPLY_ATTR(real_type),
+	POWER_SUPPLY_ATTR(hv_disable),
+	POWER_SUPPLY_ATTR(voltage),
+	POWER_SUPPLY_ATTR(battery_cycle),
+	POWER_SUPPLY_ATTR(pd_flag),
+//Bug774038,churui1.wt,add batt_full_capacity node
+	POWER_SUPPLY_ATTR(batt_full_capacity),
+#endif
 	/* Local extensions */
 	POWER_SUPPLY_ATTR(usb_hc),
 	POWER_SUPPLY_ATTR(usb_otg),
 	POWER_SUPPLY_ATTR(charge_enabled),
 	POWER_SUPPLY_ATTR(set_ship_mode),
-	POWER_SUPPLY_ATTR(real_type),
+//	POWER_SUPPLY_ATTR(real_type),
 	POWER_SUPPLY_ATTR(charge_now_raw),
 	POWER_SUPPLY_ATTR(charge_now_error),
 	POWER_SUPPLY_ATTR(capacity_raw),
@@ -406,7 +541,6 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(restricted_charging),
 	POWER_SUPPLY_ATTR(current_capability),
 	POWER_SUPPLY_ATTR(typec_mode),
-	POWER_SUPPLY_ATTR(typec_cc_orientation),
 	POWER_SUPPLY_ATTR(typec_power_role),
 	POWER_SUPPLY_ATTR(typec_src_rp),
 	POWER_SUPPLY_ATTR(pd_allowed),
