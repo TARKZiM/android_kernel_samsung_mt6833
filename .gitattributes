@@ -1,0 +1,6 @@
+*/toolchain/** filter=lfs diff=lfs merge=lfs -text
+toolchain/clang/host/linux-x86/clang-r383902/bin/clang-11 filter=lfs diff=lfs merge=lfs -text
+toolchain/clang/host/linux-x86/clang-r383902/lib64/libLLVM-11git.so filter=lfs diff=lfs merge=lfs -text
+toolchain/clang/host/linux-x86/clang-r383902/lib64/libclang.so.11git filter=lfs diff=lfs merge=lfs -text
+toolchain/clang/host/linux-x86/clang-r383902/lib64/libclang_cxx.so.11git filter=lfs diff=lfs merge=lfs -text
+toolchain/clang/host/linux-x86/clang-r383902/lib64/liblldb.so.11.0.1git filter=lfs diff=lfs merge=lfs -text
