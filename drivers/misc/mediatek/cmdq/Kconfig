@@ -7,7 +7,7 @@ config MTK_CMDQ_V3
 	  Especially for display/MDP.
 
 config MTK_CMDQ
-	bool "MediaTek CMDQ Support"
+	tristate "MediaTek CMDQ Support"
 	help
 	  Add support for the MediaTek Command Queue (CMDQ)
 	  driver. The CMDQ is used to help read/write registers with critical
