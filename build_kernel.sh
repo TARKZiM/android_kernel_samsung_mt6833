@@ -10,4 +10,4 @@ export ANDROID_MAJOR_VERSION=r
 make -C $(pwd) O=$(pwd)/out KCFLAGS=-w CONFIG_SECTION_MISMATCH_WARN_ONLY=y LLVM=1 LLVM_IAS=1 a14xm_defconfig
 make -C $(pwd) O=$(pwd)/out KCFLAGS=-w CONFIG_SECTION_MISMATCH_WARN_ONLY=y LLVM=1 LLVM_IAS=1 -j16
 
-cp out/arch/arm64/boot/Image $(pwd)/arch/arm64/boot/Image
+#cp out/arch/arm64/boot/Image $(pwd)/arch/arm64/boot/Image
