@@ -537,6 +537,8 @@
         pinctrl-0 = <&sar_int_default>;
         i2c_num = <1>;
         reg = <0x1b>;
+        #address-cells = <1>;
+        #size-cells = <0>;
         interrupt-parent = <&pio>;
         interrupts = <12 IRQ_TYPE_EDGE_FALLING 12 0>;
         tyhx,irq-gpio = <&pio 12 0x0>;
@@ -553,6 +555,8 @@
         status = "okay";
         compatible = "Semtech,sx937x";
         reg = <0x2C>;
+        #address-cells = <1>;
+        #size-cells = <0>;
         pinctrl-names = "sar_int_default";
         pinctrl-0 = <&sar_int_default>;
         interrupt-parent = <&pio>;

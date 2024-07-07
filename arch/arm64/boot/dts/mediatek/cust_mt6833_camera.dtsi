@@ -517,11 +517,15 @@
 	mtk_camera_eeprom1:camera_eeprom1@51 {
 		compatible = "mediatek,camera_eeprom";
 		reg = <0x51>;
+		#address-size = <1>;
+		#size-cells = <0>;
 		status = "okay";
 	};
 	mtk_camera_eeprom4:camera_eeprom4@50 {
 		compatible = "mediatek,camera_eeprom";
 		reg = <0x50>;
+		#address-size = <1>;
+		#size-cells = <0>;
 		status = "okay";
 	};
 };
@@ -529,6 +533,8 @@
 	mtk_camera_eeprom0:camera_eeprom0@50 {
 		compatible = "mediatek,camera_eeprom";
 		reg = <0x50>;
+		#address-size = <1>;
+		#size-cells = <0>;
 		status = "okay";
 	};
 };
