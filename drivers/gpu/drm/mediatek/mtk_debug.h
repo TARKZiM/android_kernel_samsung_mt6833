@@ -8,7 +8,7 @@
 
 #include "mtk_panel_ext.h"
 
-#define LOGGER_BUFFER_SIZE (16 * 1024)
+/* #define LOGGER_BUFFER_SIZE (16 * 1024) */
 #define ERROR_BUFFER_COUNT 16
 #define FENCE_BUFFER_COUNT 80
 #define DEBUG_BUFFER_COUNT 100
