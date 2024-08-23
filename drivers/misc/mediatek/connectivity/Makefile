@@ -46,6 +46,17 @@ endif
         $(MODULE_NAME)-objs += power_throttling/test.o
     endif
 
+    obj-$(CONFIG_MTK_COMBO) += common/
+    obj-$(CONFIG_MTK_COMBO_WIFI) += wlan/adaptor/
+    obj-$(CONFIG_MTK_COMBO_GPS) += gps/
+    obj-$(CONFIG_MTK_FMRADIO) += fmradio/
+    obj-$(CONFIG_MTK_CONNFEM) += connfem/
+
+    ifneq ($(filter "CONSYS_6833", $(CONFIG_MTK_COMBO_CHIP)),)
+        obj-$(CONFIG_MTK_COMBO_WIFI) += wlan/core/gen4m/
+        obj-$(CONFIG_MTK_COMBO_BT) += bt/mt66xx/
+    endif
+
     ifeq ($(CONFIG_MTK_COMBO), y)
         ccflags-y += -D CFG_CONNADP_BUILD_IN
     endif
