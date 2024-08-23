@@ -217,6 +217,12 @@ static int parse_audio_format_rates_v1(struct snd_usb_audio *chip, struct audiof
 			    (chip->usb_id == USB_ID(0x041e, 0x4064) ||
 			     chip->usb_id == USB_ID(0x041e, 0x4068)))
 				rate = 8000;
+//add by zhaohong 202201109
+#if defined(CONFIG_SND_SOC_FS17XX) || defined(CONFIG_SND_SOC_AW87XXX)
+            		if (rate > 48000)
+                	continue;
+#endif
+//add by zhaohong 20221109
 
 			fp->rate_table[fp->nr_rates] = rate;
 			if (!fp->rate_min || rate < fp->rate_min)
@@ -321,6 +327,12 @@ static int parse_uac2_sample_rate_range(struct snd_usb_audio *chip,
 		}
 
 		for (rate = min; rate <= max; rate += res) {
+//add by zhaohong 20221109
+#if defined(CONFIG_SND_SOC_FS17XX) || defined(CONFIG_SND_SOC_AW87XXX)
+            		if (rate > 48000)
+                		break;
+#endif
+//add by zhaohong 20221109
 			/* Filter out invalid rates on Focusrite devices */
 			if (USB_ID_VENDOR(chip->usb_id) == 0x1235 &&
 			    !focusrite_valid_sample_rate(chip, fp, rate))

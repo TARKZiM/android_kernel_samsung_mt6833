@@ -1047,9 +1047,22 @@ static void regdb_fw_cb(const struct firmware *fw, void *context)
 
 	release_firmware(fw);
 }
+//+bug 767787, yangchaojun.wt, power off charging DCP insert animation not responding
+#if defined (CONFIG_N23_CHARGER_PRIVATE)
+int net_wireledss_boot_mode = 0;
+#endif
+//-bug 767787, yangchaojun.wt, power off charging DCP insert animation not responding 
 
 static int query_regdb_file(const char *alpha2)
 {
+//+bug 767787, yangchaojun.wt, power off charging DCP insert animation not responding 
+#if defined (CONFIG_N23_CHARGER_PRIVATE) 
+	if (net_wireledss_boot_mode == 8 || net_wireledss_boot_mode == 9) {
+		pr_debug("%s bootmode is %d skip\n", __func__, net_wireledss_boot_mode);
+		return 0;
+	}
+#endif	
+//-bug 767787, yangchaojun.wt, power off charging DCP insert animation not responding 	
 	ASSERT_RTNL();
 
 	if (regdb)
