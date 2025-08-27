@@ -125,6 +125,18 @@ static inline void *verity_io_hash_req(struct dm_verity *v,
 	return io + 1;
 }
 
+static inline u8 *verity_io_real_digest(struct dm_verity *v,
+					struct dm_verity_io *io)
+{
+	return (u8 *)(io + 1) + v->hash_reqsize;
+}
+  
+static inline u8 *verity_io_want_digest(struct dm_verity *v,
+					struct dm_verity_io *io)
+{
+	return (u8 *)(io + 1) + v->hash_reqsize + v->digest_size;
+}
+
 extern int verity_hash(struct dm_verity *v, struct dm_verity_io *io,
 		       const u8 *data, size_t len, u8 *digest, bool may_sleep);
 

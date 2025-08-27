@@ -312,7 +312,7 @@ static int exfat_get_block(struct inode *inode, sector_t iblock,
 	 *  3. direct_read (!bh_result->b_folio)
 	 *     -> the unwritten part will be zeroed in exfat_direct_IO()
 	 *
-	 * Otherwise, in the case of buffered read, it is necessary to take
+	 * Otherwise, in the case of bufferred read, it is necessary to take
 	 * care the last nested block if valid_size is not equal to i_size.
 	 */
 	if (i_size == ei->valid_size || create || !bh_result->b_folio)
@@ -464,6 +464,7 @@ static int exfat_write_end(struct file *file, struct address_space *mapping,
 	int err;
 
 	err = generic_write_end(file, mapping, pos, len, copied, pagep, fsdata);
+
 	if (err < len)
 		exfat_write_failed(mapping, pos+len);
 

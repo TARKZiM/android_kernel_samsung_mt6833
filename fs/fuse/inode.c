@@ -792,7 +792,7 @@ static void fuse_sync_fs_writes(struct fuse_conn *fc)
 	 */
 	atomic_dec(&bucket->count);
 
-	wait_event(bucket->waitq, atomic_read(&bucket->count) == 0);
+	fuse_wait_event(bucket->waitq, atomic_read(&bucket->count) == 0);
 
 	/* Drop temp count on descendant bucket */
 	fuse_sync_bucket_dec(new_bucket);
@@ -1130,6 +1130,7 @@ void fuse_conn_put(struct fuse_conn *fc)
 			WARN_ON(atomic_read(&bucket->count) != 1);
 			kfree(bucket);
 		}
+		fuse_daemon_watchdog_stop(fc);
 		call_rcu(&fc->rcu, delayed_release);
 	}
 }
@@ -1514,6 +1515,11 @@ static void process_init_reply(struct fuse_mount *fm, struct fuse_args *args,
 		fc->conn_init = 0;
 		fc->conn_error = 1;
 	}
+
+	ST_LOG("<%s> dev = %u:%u  fuse Initialized",
+			__func__, MAJOR(fc->dev), MINOR(fc->dev));
+
+	fuse_daemon_watchdog_start(fc);
 
 	fuse_set_initialized(fc);
 	wake_up_all(&fc->blocked_waitq);

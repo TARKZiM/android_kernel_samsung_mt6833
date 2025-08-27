@@ -117,6 +117,8 @@ else
 		# Make a temp copy to avoid changing source during pre-processing
 		cp -f "${SYMBOL_LIST}" "${GKI_EXPORTED_SYMBOLS}"
 	fi
+	
+	chmod +w "${GKI_EXPORTED_SYMBOLS}"
 
 	generate_header "${TARGET}" "${GKI_EXPORTED_SYMBOLS}" "protected_exports"
 fi

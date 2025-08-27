@@ -105,6 +105,10 @@
 
 #include "../../lib/kstrtox.h"
 
+#ifdef CONFIG_IO_RECORD
+#include <linux/io_record.h>
+#endif
+
 /* NOTE:
  *	Implementing inode permission operations in /proc is almost
  *	certainly an error.  Permission checks need to happen during
@@ -3280,6 +3284,10 @@ static const struct pid_entry tgid_base_stuff[] = {
 	ONE("stat",       S_IRUGO, proc_tgid_stat),
 	ONE("statm",      S_IRUGO, proc_pid_statm),
 	REG("maps",       S_IRUGO, proc_pid_maps_operations),
+#ifdef CONFIG_IO_RECORD
+	REG("filemap_list", 0444, proc_pid_filemap_list_ops),
+	REG("io_record_control", 0666, proc_pid_io_record_ops),
+#endif
 #ifdef CONFIG_NUMA
 	REG("numa_maps",  S_IRUGO, proc_pid_numa_maps_operations),
 #endif
